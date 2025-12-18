@@ -13,12 +13,24 @@ import yaml
 from starter import connect
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 console_handler.setFormatter(formatter)
+if not logger.handlers:
+    logger.addHandler(console_handler)
+
+
+def _apply_log_level_from_config(config: dict) -> None:
+    """Apply log level from config to the module logger.
+
+    Args:
+        config (dict): Configuration dictionary / 設定辞書
+    """
+    level_name = str(config.get("log", {}).get("level", "INFO")).upper()
+    level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
+    logger.setLevel(level)
 
 
 def execute(config_path: Path) -> None:
@@ -31,6 +43,7 @@ def execute(config_path: Path) -> None:
     """
     with Path.open(config_path) as f:
         config = yaml.safe_load(f)
+        _apply_log_level_from_config(config)
         logger.info("設定ファイルを読み込みました")
 
     agent_num = int(config["agent"]["num"])

@@ -19,13 +19,24 @@ from aiwolf_nlp_common.client import Client
 from aiwolf_nlp_common.packet import Request
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+if not logger.handlers:
+    logger.addHandler(console_handler)
+
+
+def _apply_log_level_from_config(config: dict[str, Any]) -> None:
+    """Apply log level from config to the module logger.
+
+    Args:
+        config (dict[str, Any]): Configuration dictionary / 設定辞書
+    """
+    level_name = str(config.get("log", {}).get("level", "INFO")).upper()
+    level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
+    logger.setLevel(level)
 
 
 def create_client(config: dict[str, Any]) -> Client:
@@ -111,6 +122,7 @@ def connect(config: dict[str, Any], idx: int = 1) -> None:
         config (dict[str, Any]): Configuration dictionary / 設定辞書
         idx (int): Agent index (default: 1) / エージェントインデックス (デフォルト: 1)
     """
+    _apply_log_level_from_config(config)
     name = str(config["agent"]["team"]) + str(idx)
     while True:
         try:
