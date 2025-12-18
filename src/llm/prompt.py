@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aiwolf_nlp_common.packet import Info, Judge, Role, Status, Talk
+    from aiwolf_nlp_common.packet import Info, Judge, Role, Talk
 
 
 class PromptBuilder:
@@ -23,8 +23,9 @@ class PromptBuilder:
         talk_history: list[Talk],
         whisper_history: list[Talk],
         role: Role,
-        agent_name: str,
+        game_name: str,
         *,
+        profile: str | None = None,
         divine_results: list[Judge] | None = None,
         medium_results: list[Judge] | None = None,
         executed_agents: list[str] | None = None,
@@ -39,7 +40,9 @@ class PromptBuilder:
             talk_history (list[Talk]): History of public talks / 公開発言の履歴
             whisper_history (list[Talk]): History of whispers (werewolf only) / 囁きの履歴（人狼のみ）
             role (Role): Agent's role / エージェントの役職
-            agent_name (str): Agent's name / エージェントの名前
+            game_name (str): Agent's in-game name / ゲーム内でのエージェント名
+            profile (str | None): Character profile from the server (INITIALIZE only) /
+                サーバから渡されるキャラクター設定（INITIALIZEのみ）
             divine_results (list[Judge] | None): All divine results so far / 過去の占い結果
             medium_results (list[Judge] | None): All medium results so far / 過去の霊媒結果
             executed_agents (list[str] | None): List of executed agents / 処刑者リスト
@@ -50,16 +53,20 @@ class PromptBuilder:
         """
         context_parts: list[str] = []
 
-        # Basic info
-        context_parts.append(f"あなたの名前: {agent_name}")
-        context_parts.append(f"あなたの役職: {role}")
+        # Basic info (English for INLG 2025)
+        context_parts.append(f"Your in-game name: {game_name}")
+        context_parts.append(f"Your role: {role}")
+
+        if profile:
+            context_parts.append("\n[Your character profile from the server]")
+            context_parts.append(profile)
 
         if info:
             # Day information
-            context_parts.append(f"現在の日数: {info.day}日目")
+            context_parts.append(f"Current day: {info.day}")
 
             # Agent status
-            context_parts.append("\n【生存状況】")
+            context_parts.append("\n[Alive status]")
             alive_agents: list[str] = []
             dead_agents: list[str] = []
             for agent, status in info.status_map.items():
@@ -68,71 +75,90 @@ class PromptBuilder:
                 else:
                     dead_agents.append(agent)
 
-            context_parts.append(f"生存者: {', '.join(alive_agents)}")
+            context_parts.append("Alive agents:")
+            context_parts.extend([f"- {a}" for a in alive_agents])
             if dead_agents:
-                context_parts.append(f"死亡者: {', '.join(dead_agents)}")
+                context_parts.append("Dead agents:")
+                context_parts.extend([f"- {a}" for a in dead_agents])
 
             # Role map (what we know)
             if info.role_map:
-                context_parts.append("\n【判明している役職】")
+                context_parts.append("\n[Known roles]")
                 for agent, agent_role in info.role_map.items():
-                    context_parts.append(f"  {agent}: {agent_role}")
+                    context_parts.append(f"- {agent}: {agent_role}")
+
+            # Communication limits (if provided)
+            remain_count = getattr(info, "remain_count", None)
+            remain_length = getattr(info, "remain_length", None)
+            remain_skip = getattr(info, "remain_skip", None)
+            if remain_count is not None or remain_length is not None or remain_skip is not None:
+                context_parts.append("\n[Communication limits]")
+                if remain_count is not None:
+                    context_parts.append(f"- remaining requests: {remain_count}")
+                if remain_length is not None:
+                    context_parts.append(f"- remaining length budget: {remain_length}")
+                if remain_skip is not None:
+                    context_parts.append(f"- remaining skips: {remain_skip}")
 
         # Divine results (for seer) - show all past results
         if divine_results:
-            context_parts.append("\n【占い結果（全履歴）】")
+            context_parts.append("\n[Divination results (all)]")
             for result in divine_results:
-                context_parts.append(f"  {result.target}: {result.result}")
+                context_parts.append(f"- {result.target}: {result.result}")
         elif info and info.divine_result:
             # Fallback to current info if no history provided
-            context_parts.append("\n【占い結果】")
+            context_parts.append("\n[Divination result]")
             context_parts.append(
-                f"  {info.divine_result.target}: {info.divine_result.result}",
+                f"- {info.divine_result.target}: {info.divine_result.result}",
             )
 
         # Medium results - show all past results
         if medium_results:
-            context_parts.append("\n【霊媒結果（全履歴）】")
+            context_parts.append("\n[Medium results (all)]")
             for result in medium_results:
-                context_parts.append(f"  {result.target}: {result.result}")
+                context_parts.append(f"- {result.target}: {result.result}")
         elif info and info.medium_result:
             # Fallback to current info if no history provided
-            context_parts.append("\n【霊媒結果】")
+            context_parts.append("\n[Medium result]")
             context_parts.append(
-                f"  {info.medium_result.target}: {info.medium_result.result}",
+                f"- {info.medium_result.target}: {info.medium_result.result}",
             )
 
         # Executed agents - show all
         if executed_agents:
-            context_parts.append(f"\n処刑されたエージェント: {', '.join(executed_agents)}")
+            context_parts.append("\nExecuted agents:")
+            context_parts.extend([f"- {a}" for a in executed_agents])
         elif info and info.executed_agent:
-            context_parts.append(f"\n処刑されたエージェント: {info.executed_agent}")
+            context_parts.append("\nExecuted agent:")
+            context_parts.append(f"- {info.executed_agent}")
 
         # Attacked agents - show all
         if attacked_agents:
-            context_parts.append(f"襲撃されたエージェント: {', '.join(attacked_agents)}")
+            context_parts.append("\nAttacked agents:")
+            context_parts.extend([f"- {a}" for a in attacked_agents])
         elif info and info.attacked_agent:
-            context_parts.append(f"襲撃されたエージェント: {info.attacked_agent}")
+            context_parts.append("\nAttacked agent:")
+            context_parts.append(f"- {info.attacked_agent}")
 
         # Vote list
         if info and info.vote_list:
-            context_parts.append("\n【投票履歴】")
+            context_parts.append("\n[Vote history]")
             for vote in info.vote_list:
-                context_parts.append(f"  {vote.agent} → {vote.target}")
+                context_parts.append(f"- {vote.agent} -> {vote.target}")
 
         # Talk history
         if talk_history:
-            context_parts.append("\n【会話履歴】")
+            context_parts.append("\n[Recent talk history]")
             recent_talks = talk_history[-20:]  # Last 20 talks
             for talk in recent_talks:
-                context_parts.append(f"  {talk.agent}: {talk.text}")
+                context_parts.append(f"- {talk.agent}: {talk.text}")
 
         # Whisper history (for werewolf)
         if whisper_history:
-            context_parts.append("\n【人狼の囁き履歴】")
+            context_parts.append("\n[Recent whisper history]")
             recent_whispers = whisper_history[-10:]  # Last 10 whispers
             for whisper in recent_whispers:
-                context_parts.append(f"  {whisper.agent}: {whisper.text}")
+                context_parts.append(f"- {whisper.agent}: {whisper.text}")
 
         return "\n".join(context_parts)
 
@@ -145,26 +171,46 @@ class PromptBuilder:
         Returns:
             str: Base system prompt / 基本システムプロンプト
         """
-        return """あなたは人狼ゲームをプレイするAIエージェントです。
+        return """You are a player agent for AIWolf INLG 2025.
+Your objective is to maximize your team win rate while strictly following the server constraints.
 
-人狼ゲームのルール:
-- 村人陣営と人狼陣営に分かれて戦います
-- 昼のターンでは議論を行い、投票で処刑する人を決めます
-- 夜のターンでは人狼が村人を襲撃します
-- 村人陣営は人狼を全員処刑すれば勝利、人狼陣営は村人の数が人狼以下になれば勝利です
+Output constraints for TALK and WHISPER
+- Output must be a single line of plain text
+- Use natural English only, no protocol, no structured commands
+- Never output the half width comma character ","
+- TALK and WHISPER length must be within the server limit
+  - Assume a hard cap of 125 characters excluding spaces
+  - Use a safety margin: aim for 110 or fewer non space characters
+  - The server may truncate overlong output and the truncated tail is lost
+  - Put the essential content first, avoid long prefaces
+  - Before sending, self check by counting non space characters
+- Mentions
+  - To address someone, start the message with "@Name "
+- If you choose not to speak, output exactly "Skip"
+- If you will not speak again today, output exactly "Over"
 
-役職:
-- 村人: 特殊能力なし
-- 占い師: 毎晩1人を占い、人狼かどうかを知ることができる
-- 霊媒師: 処刑された人が人狼だったかを知ることができる
-- 騎士: 毎晩1人を護衛し、人狼の襲撃から守ることができる
-- 人狼: 毎晩村人を1人襲撃できる。他の人狼と夜に会話できる
-- 狂人: 村人陣営だが、人狼の勝利が自分の勝利となる
+Output constraints for target actions
+- For VOTE, ATTACK, DIVINE, GUARD, output only the exact target name and nothing else
 
-重要な指示:
-- 常に自分の陣営の勝利を目指してください
-- 論理的に考え、他のプレイヤーの発言や行動から情報を推理してください
-- 応答は簡潔に、ゲームの文脈に適した形式で返してください"""
+Game essentials
+- Two teams, villager team and werewolf team
+- Each day: discussion, vote execution, then night actions
+- Do not rely on messages from the same turn
+
+Common decision and talk policy
+- Track public role claims, result claims, and declared vote intents
+- Flag contradictions and impossible sequences
+- Maintain a suspicion score per player and update after each message
+- In TALK, do at most one main act: state your vote target with one short reason, or ask one direct question
+- Keep statements consistent across days, if changing mind, give one short reason
+
+Role set reminders
+- 5 players: Villager x2, Seer x1, Werewolf x1, Possessed x1
+- 13 players: Villager x6, Seer x1, Medium x1, Bodyguard x1, Werewolf x3, Possessed x1
+
+Always return a valid output within the time limit.
+
+"""
 
     @staticmethod
     def get_action_prompt(action_type: str, alive_agents: list[str]) -> str:
@@ -180,38 +226,42 @@ class PromptBuilder:
         Returns:
             str: Action-specific prompt / アクション固有のプロンプト
         """
-        agents_str = ", ".join(alive_agents)
-        example_name = alive_agents[0] if alive_agents else "ケンジ"
+        example_name = alive_agents[0] if alive_agents else "Agent[01]"
+        candidates_block = "\n".join([f"- {a}" for a in alive_agents]) if alive_agents else "- (none)"
 
         prompts = {
-            "talk": f"""発言してください。
-他のプレイヤーとの議論、情報共有、推理の表明などを行ってください。
-自然な日本語で、1〜2文程度で簡潔に発言してください。
-発言内容のみを返してください。""",
-            "vote": f"""投票対象を選んでください。
-生存者: {agents_str}
+            "talk": """Write one short TALK message.
+Use natural English in 1-2 short sentences.
+Do NOT use commas.
+Return only the message text.""",
+            "vote": f"""Choose one player to vote for.
+Candidates:
+{candidates_block}
 
-最も怪しいと思う人物、または戦略的に処刑すべき人物を選んでください。
-エージェント名のみを返してください（例: {example_name}）。""",
-            "divine": f"""占い対象を選んでください。
-生存者: {agents_str}
+Return exactly one candidate name (example: {example_name}).
+Return ONLY the name with no extra words, no punctuation, and no quotes.""",
+            "divine": f"""Choose one player to divine.
+Candidates:
+{candidates_block}
 
-最も占う価値があると思う人物を選んでください。
-エージェント名のみを返してください（例: {example_name}）。""",
-            "guard": f"""護衛対象を選んでください。
-生存者: {agents_str}
+Return exactly one candidate name (example: {example_name}).
+Return ONLY the name with no extra words, no punctuation, and no quotes.""",
+            "guard": f"""Choose one player to guard.
+Candidates:
+{candidates_block}
 
-最も守る価値があると思う人物を選んでください。
-エージェント名のみを返してください（例: {example_name}）。""",
-            "attack": f"""襲撃対象を選んでください。
-生存者: {agents_str}
+Return exactly one candidate name (example: {example_name}).
+Return ONLY the name with no extra words, no punctuation, and no quotes.""",
+            "attack": f"""Choose one player to attack.
+Candidates:
+{candidates_block}
 
-村人陣営の勝利に貢献しそうな人物を優先的に襲撃してください。
-エージェント名のみを返してください（例: {example_name}）。""",
-            "whisper": f"""人狼同士の囁きを行ってください。
-仲間の人狼と戦略を共有してください。
-自然な日本語で、1〜2文程度で簡潔に発言してください。
-発言内容のみを返してください。""",
+Return exactly one candidate name (example: {example_name}).
+Return ONLY the name with no extra words, no punctuation, and no quotes.""",
+            "whisper": """Write one short WHISPER message to your werewolf teammates.
+Use natural English in 1-2 short sentences.
+Do NOT use commas.
+Return only the message text.""",
         }
 
-        return prompts.get(action_type, "応答してください。")
+        return prompts.get(action_type, "Respond.")
