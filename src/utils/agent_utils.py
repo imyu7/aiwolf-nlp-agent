@@ -25,7 +25,6 @@ ROLE_TO_AGENT_CLS: dict[Role, type[Agent]] = {
 }
 
 
-@staticmethod
 def init_agent_from_packet(
     config: dict[str, Any],
     name: str,
@@ -49,10 +48,10 @@ def init_agent_from_packet(
         ValueError: If packet info or role is not found / パケット情報またはロールが見つからない場合
     """
     if not packet.info:
-        raise ValueError(packet.info, "Info not found")
+        raise ValueError("Info not found")
     role = packet.info.role_map.get(packet.info.agent)
     if not role:
-        raise ValueError(packet.info, "Role not found")
+        raise ValueError("Role not found")
     return ROLE_TO_AGENT_CLS[role](
         config=config,
         name=name,
