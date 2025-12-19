@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,windows,python,venv
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,macos,windows,python,venv
 
+# log ディレクトリは git 管理対象外
+log/
+
 ### macOS ###
 # General
 .DS_Store

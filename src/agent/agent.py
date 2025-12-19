@@ -146,11 +146,7 @@ class Agent:
         """
         base = PromptBuilder.get_base_system_prompt()
         if self.profile_text:
-            return (
-                f"{base}\n\n"
-                "Character profile (must be reflected in your speaking style):\n"
-                f"{self.profile_text}\n"
-            )
+            return f"{base}\n\nCharacter profile (must be reflected in your speaking style):\n{self.profile_text}\n"
         return base
 
     def _get_action_prompt(self, action_type: str, candidates: list[str] | None = None) -> str:
