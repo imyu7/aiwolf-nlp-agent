@@ -270,3 +270,11 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,windows,python,venv
 
 config/config.yml
+
+# AIWolf server binary and config (downloaded locally)
+aiwolf-nlp-server
+aiwolf-nlp-server.tar.gz
+default.yml
+
+# Simulation logs
+logs/
