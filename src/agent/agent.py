@@ -106,6 +106,10 @@ class Agent:
         self.attacked_agents: list[str] = []
         self.vote_history: list[list[Vote]] = []
 
+        # Track recent fallback talks to avoid duplicates / 重複防止用の直近発言記録
+        self.recent_fallback_talks: list[str] = []
+        self._max_recent_talks = 5  # Keep track of last N talks
+
         # LLM client initialization
         self.llm_client: LLMClient | None = None
         self.llm_enabled = self._init_llm_client()
@@ -314,6 +318,8 @@ class Agent:
         """Return a safe fallback message for TALK/WHISPER.
 
         TALK/WHISPER 用の安全なフォールバック発話を返す.
+        Day 0（挨拶）とDay 1以降（議論）で発言を分ける.
+        重複防止機構付き.
 
         Args:
             action_type (str): "talk" or "whisper" / アクション種別
@@ -327,15 +333,46 @@ class Agent:
                 "Let us coordinate our votes and keep a consistent story.",
                 "I will follow the flow and avoid drawing attention.",
             ]
-        else:
-            candidates = [
-                "Hello everyone.",
-                "I want to hear your reasoning.",
-                "Let us discuss who seems suspicious.",
-                "I am not sure yet but I will share my thoughts soon.",
-            ]
-        # Avoid commas by construction.
-        return random.choice(candidates)  # noqa: S311
+            return random.choice(candidates)  # noqa: S311
+
+        # Day 0: 挨拶系の発言
+        day0_candidates = [
+            "Hello everyone. I hope we can work together.",
+            "Nice to meet you all. Let us have a good game.",
+            "I am looking forward to hearing everyone's thoughts.",
+            "Greetings. I hope we can find the truth together.",
+        ]
+
+        # Day 1以降: 議論系の発言
+        day1_candidates = [
+            "I want to hear your reasoning.",
+            "Something feels off about this situation.",
+            "We need to think about who benefits from this.",
+            "I am not fully convinced by that claim.",
+            "That reasoning does not add up to me.",
+            "I have been observing everyone closely.",
+            "Let us focus on finding the truth.",
+            "We should vote carefully today.",
+        ]
+
+        # Select candidates based on current day
+        candidates = day0_candidates if self.day == 0 else day1_candidates
+
+        # Filter out recently used fallbacks to avoid duplicates
+        available = [c for c in candidates if c not in self.recent_fallback_talks]
+        if not available:
+            # All candidates used recently; reset and use full list
+            self.recent_fallback_talks = []
+            available = candidates
+
+        selected = random.choice(available)  # noqa: S311
+
+        # Track this selection
+        self.recent_fallback_talks.append(selected)
+        if len(self.recent_fallback_talks) > self._max_recent_talks:
+            self.recent_fallback_talks.pop(0)
+
+        return selected
 
     def _random_choice(self, candidates: list[str]) -> str:
         """Pick one element from candidates.
@@ -731,8 +768,18 @@ class Agent:
             if agent_name:
                 return agent_name
 
-        fallback = self._random_choice(candidates) or self._random_choice(self.get_alive_agents())
-        return fallback
+        # Fallback: ensure self is excluded / フォールバック: 自分を除外
+        if candidates:
+            return self._random_choice(candidates)
+
+        # Last resort: pick from alive agents excluding self
+        me = self.get_my_game_name()
+        alive_others = [a for a in self.get_alive_agents() if a != me]
+        if alive_others:
+            return self._random_choice(alive_others)
+
+        # Absolute fallback (should never happen in normal gameplay)
+        return self._random_choice(self.get_alive_agents())
 
     def attack(self) -> str:
         """Return response to attack request.

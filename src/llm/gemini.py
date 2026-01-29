@@ -50,6 +50,8 @@ class GeminiClient:
         self.model = str(llm_config.get("model", "gemini-2.5-flash-lite"))
         self.timeout = int(llm_config.get("timeout", 10))
         self.max_retries = int(llm_config.get("max_retries", 2))
+        # max_output_tokens: None means no limit, set a small value for free tier
+        self.max_output_tokens: int | None = llm_config.get("max_output_tokens")
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
         """Generate a response from Gemini.
@@ -124,15 +126,20 @@ class GeminiClient:
             LLMAPIError: If the API returns an error / APIがエラーを返した場合
         """
         try:
+            # Build config with optional max_output_tokens
+            gen_config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                http_options=types.HttpOptions(
+                    timeout=self.timeout * 1000,
+                ),
+            )
+            if self.max_output_tokens is not None:
+                gen_config.max_output_tokens = self.max_output_tokens
+
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    http_options=types.HttpOptions(
-                        timeout=self.timeout * 1000,
-                    ),
-                ),
+                config=gen_config,
             )
 
             if response.text:
